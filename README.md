@@ -127,8 +127,8 @@ want to deviate from the instructions below absolutely do so.
 ```bash
 git clone git@github.com:NeilMasters/sdmr-cli.git
 cd sdmr-cli
-chmod +x smdr-cli.sh
-sudo ln -s $(pwd)/smdr-cli.sh /usr/local/bin/smdr-cli
+chmod +x sdmr-cli.sh
+sudo ln -s $(pwd)/sdmr-cli.sh /usr/local/bin/sdmr-cli
 ```
 
 ## Usage
