@@ -10,14 +10,15 @@ database type resources.
 
 1. [Features](#features)
 2. [Why would you use this?](#why-would-you-use-this)
-3. [Installation](#installation)
-   1. [Create your resources list](#1-create-your-resources-list)
-   2. [Add your strongdm email as an environment variable](#2-add-your-strongdm-email-as-an-environment-variable)
-   3. [Install any dependencies](#3-install-any-dependencies)
-   4. [Install and symlink](#install-and-symlink)
-4. [Usage](#usage)
+3. [Usage](#usage)
    1. [Making a request, connecting and opening your client](#1-making-a-request-connecting-and-opening-your-client)
    2. [Connecting to an already approved request and opening your client](#2-connecting-to-an-already-approved-request-and-opening-your-client)
+4. [Installation](#installation)
+   1. [Install and symlink](#install-and-symlink)
+   2. [Manual step by step](#manual-step-by-step)
+      1. [Create your resources list](#1-create-your-resources-list)
+      2. [Add your strongdm email as an environment variable](#2-add-your-strongdm-email-as-an-environment-variable)
+      3. [Install any dependencies](#3-install-any-dependencies)
 
 ## Features
 1. Automatically sets up any dependencies or tells you what to do.
@@ -53,11 +54,43 @@ StrongDM desktop client.
 > requests very often then this script may not be for you as it is unlikely
 > to save you much time.
 
+## Usage
+### Making a request, connecting and opening your client
+This command will show multiple dialog screens to help you make your choice.
+Upon approval it will open your client automatically. If approval is not
+automatic or the approvers are slow it will display a message tell you to run
+again with `sdmr-cli connect`.
+
+```bash
+smdr-cli request
+```
+
+### Connecting to an already approved request and opening your client
+This command will connect to any already approved requests and open your
+client automatically.
+
+```bash
+sdmr-cli connect
+```
+
 ## Installation
 The script itself will do most of this setup for you. These steps are being
 documented here for those who wish a more manual and involved setup.
 
-### 1. Create your resources list
+### Install and symlink
+As this is just bash scripts, you can use it in a variety of ways; if you
+want to deviate from the instructions below absolutely do so.
+
+```bash
+git clone git@github.com:NeilMasters/sdmr-cli.git
+cd sdmr-cli
+chmod +x sdmr-cli.sh
+sudo ln -s $(pwd)/sdmr-cli.sh /usr/local/bin/sdmr-cli
+```
+
+### Manual step by step
+
+#### 1. Create your resources list
 Because not every environment allows API access this script pulls resources
 from a ~/.sdmresources file.
 
@@ -96,7 +129,7 @@ export SDM_EMAIL="your.email@org.tld"
 > value. It is used by the sdm cli directly. We reference the variable within 
 > the script purely as a helper for setup.
 
-### 3. Install any dependencies
+#### 3. Install any dependencies
 Fortunately if you are wanting to utilize this script then you will
 already have the sdm desktop app/cli. There is a very high probability
 that you have the other dependencies too.
@@ -118,34 +151,4 @@ dependencies.
 apt install -y jq jc awk dialog
 # MacOS (with homebrew)
 brew install jq jc awk dialog
-```
-
-### Install and symlink
-As this is just bash scripts, you can use it in a variety of ways; if you
-want to deviate from the instructions below absolutely do so.
-
-```bash
-git clone git@github.com:NeilMasters/sdmr-cli.git
-cd sdmr-cli
-chmod +x sdmr-cli.sh
-sudo ln -s $(pwd)/sdmr-cli.sh /usr/local/bin/sdmr-cli
-```
-
-## Usage
-### Making a request, connecting and opening your client
-This command will show multiple dialog screens to help you make your choice.
-Upon approval it will open your client automatically. If approval is not
-automatic or the approvers are slow it will display a message tell you to run
-again with `sdmr-cli connect`.
-
-```bash
-smdr-cli request
-```
-
-### Connecting to an already approved request and opening your client
-This command will connect to any already approved requests and open your
-client automatically.
-
-```bash
-sdmr-cli connect
 ```
