@@ -219,7 +219,7 @@ then
     then
         ACCESS_REQUEST_ID=$(sdm access to "${RESOURCE_CHOICE_ID}" \
             --timeout "30s" \
-            --reason "${REASON}" \
+            --reason "${REASON} - SDMR-CLI" \
             --duration "${TIME_CHOICE_ID}")
 
         ok "I will now wait for that approval for a max of 15 seconds in case"
