@@ -1,5 +1,5 @@
 # sdmr-cli
-`sdmr-cli` is a small API-free sidecar script to supplement sdm cli
+`sdmr-cli` is a small sidecar script to supplement sdm cli
 functionality and automate requests, connections and client opening for
 database type resources.
 
@@ -13,10 +13,11 @@ database type resources.
 3. [Usage](#usage)
    1. [Making a request, connecting and opening your client](#1-making-a-request-connecting-and-opening-your-client)
    2. [Connecting to an already approved request and opening your client](#2-connecting-to-an-already-approved-request-and-opening-your-client)
+   3. [Creating a new Jira ticket](#creating-a-new-jira-ticket)
 4. [Installation](#installation)
    1. [Install and symlink](#install-and-symlink)
    2. [Manual step by step](#manual-step-by-step)
-      1. [Create your resources list](#1-create-your-resources-list)
+      1. [Create your config file](#1-create-your-config-file)
       2. [Add your strongdm email as an environment variable](#2-add-your-strongdm-email-as-an-environment-variable)
       3. [Install any dependencies](#3-install-any-dependencies)
 
@@ -25,6 +26,7 @@ database type resources.
 2. Automates request management
 3. Simplifies connection handling
 4. Auto opens your client with the connection details
+5. Creates a Jira ticket for a new access request, or uses an existing one
 
 There is much more this can potentially do and your pull requests are
 appreciated. It is very much so a tool that I wrote to satisfy my own
@@ -77,6 +79,42 @@ The client opened is chosen by the `SDM_CLIENT_SCHEME` environment variable, whi
 defaults to `mysql`. For example, set `SDM_CLIENT_SCHEME=postgresql` to open
 `postgresql://` links instead.
 
+### Creating a new Jira ticket
+When making a request you choose either an existing ticket or a new one. For an
+existing ticket you enter the ticket number and a reason, as before. For a new
+ticket you choose a Jira project and enter a reason; the script creates a Task
+in that project with your reason as the description, assigned to the Jira account
+matching `JIRA_API_USERNAME`. The title is generated as
+"<SDM_EMAIL> needs access to <resource> for <time>", and the new ticket key is used
+as the reason for the request.
+
+This needs your Jira credentials in your shell profile:
+
+```bash
+export JIRA_API_USERNAME="your.email@org.tld"
+export JIRA_API_TOKEN="your-jira-api-token"
+export SDM_JIRA_SITE="your-org.atlassian.net"
+```
+
+Create an API token at https://id.atlassian.com/manage-profile/security/api-tokens.
+`SDM_JIRA_SITE` is your Jira site, without `https://`.
+
+By default the project menu lists every project in Jira. To choose from a curated
+list instead, add `SDM_JIRA_PROJECTS` to `~/.sdmr-cli-config`, with a name and project
+key for each entry:
+
+```bash
+declare -a SDM_JIRA_PROJECTS=(
+"Easy to read name 1" "PROJ1"
+"Easy to read name 2" "PROJ2"
+)
+```
+
+The same file holds `SDM_JIRA_TEAMS`, with a team name and its Jira team ID for
+each entry. After you choose a project, the script shows the team menu only if that
+project's Task create screen includes the Team field; otherwise the step is skipped.
+The chosen team is set on the new ticket.
+
 ## Installation
 The script itself will do most of this setup for you. These steps are being
 documented here for those who wish a more manual and involved setup.
@@ -94,17 +132,17 @@ sudo ln -s $(pwd)/sdmr-cli.sh /usr/local/bin/sdmr-cli
 
 ### Manual step by step
 
-#### 1. Create your resources list
-Because not every environment allows API access this script pulls resources
-from a ~/.sdmresources file.
+#### 1. Create your config file
+Because not every environment allows API access this script reads resources
+from a ~/.sdmr-cli-config file, which also holds the optional Jira projects and teams.
 
 The application on first run will create a template file for you to manually
 edit. You can also create this file manually.
 
 ```bash
-echo 'declare -a SDM_RESOURCES=(' >> ~/.sdmresources
-echo '"Easy to read name 1" "id-1-from-strongdm"' >> ~/.sdmresources
-echo ')' >> ~/.sdmresources
+echo 'declare -a SDM_RESOURCES=(' >> ~/.sdmr-cli-config
+echo '"Easy to read name 1" "id-1-from-strongdm"' >> ~/.sdmr-cli-config
+echo ')' >> ~/.sdmr-cli-config
 ```
 
 After this simply edit the file and add your own resources. The simplest method

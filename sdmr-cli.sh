@@ -1,6 +1,7 @@
 #!/bin/bash
 
 CMD=$1
+JIRA_SITE="${SDM_JIRA_SITE:-}"
 
 function error() {
     echo -e "\033[0;31mERROR: $1\033[0m"
@@ -43,6 +44,46 @@ function getConnected() {
 
 function getApprovedResource() {
     sdm status | jc --asciitable | jq -r ".[] | select( .datasource == \"${1}\")" | jq -r '.address'
+}
+
+function jiraProjects() {
+    local START_AT=0
+    local PAGE
+    local MORE=true
+
+    while [[ $MORE == true ]]
+    do
+        PAGE=$(curl -s -u "${JIRA_API_USERNAME}:${JIRA_API_TOKEN}" -H 'Accept: application/json' \
+            "https://${JIRA_SITE}/rest/api/3/project/search?startAt=${START_AT}&maxResults=50")
+        echo "${PAGE}" | jq -r '.values[]? | [.name, .key] | @tsv'
+        MORE=$(echo "${PAGE}" | jq -r '.isLast == false')
+        START_AT=$(( START_AT + 50 ))
+    done
+}
+
+function jiraAccountId() {
+    curl -s -G -u "${JIRA_API_USERNAME}:${JIRA_API_TOKEN}" -H 'Accept: application/json' \
+        "https://${JIRA_SITE}/rest/api/3/user/search" --data-urlencode "query=${JIRA_API_USERNAME}" \
+        | jq -r --arg email "${JIRA_API_USERNAME}" '[.[]? | select((.emailAddress // "" | ascii_downcase) == ($email | ascii_downcase))] | .[0].accountId // empty'
+}
+
+function createJiraTicket() {
+    jq -n --arg project "${1}" --arg summary "${2}" --arg description "${3}" --arg team "${4}" --arg assignee "${5}" \
+        '{fields: ({project: {key: $project}, summary: $summary, issuetype: {name: "Task"}, assignee: {accountId: $assignee}, description: {type: "doc", version: 1, content: [{type: "paragraph", content: [{type: "text", text: $description}]}]}} + (if $team == "" then {} else {customfield_13100: $team} end))}' \
+    | curl -s -X POST -u "${JIRA_API_USERNAME}:${JIRA_API_TOKEN}" \
+        -H 'Accept: application/json' -H 'Content-Type: application/json' \
+        --data @- "https://${JIRA_SITE}/rest/api/3/issue" \
+    | jq -r '.key // empty'
+}
+
+function jiraSupportsTeam() {
+    local TASK_TYPE_ID
+    TASK_TYPE_ID=$(curl -s -u "${JIRA_API_USERNAME}:${JIRA_API_TOKEN}" -H 'Accept: application/json' \
+        "https://${JIRA_SITE}/rest/api/3/issue/createmeta/${1}/issuetypes" \
+        | jq -r '.issueTypes[]? | select(.name == "Task") | .id' | head -1)
+    curl -s -u "${JIRA_API_USERNAME}:${JIRA_API_TOKEN}" -H 'Accept: application/json' \
+        "https://${JIRA_SITE}/rest/api/3/issue/createmeta/${1}/issuetypes/${TASK_TYPE_ID}?maxResults=200" \
+        | jq -r '[.fields[]? | select(.fieldId == "customfield_13100")] | length > 0'
 }
 
 function connectAndLaunch() {
@@ -130,8 +171,8 @@ fi
 
 if [[ $CMD == "request" ]];
 then
-    if [ ! -f ~/.sdmresources ]; then
-        error "~/.sdmresources not found"
+    if [ ! -f ~/.sdmr-cli-config ]; then
+        error "~/.sdmr-cli-config not found"
         error ""
         ok "Do you want us to create a basic file for you to edit? (N/y)"
 
@@ -139,10 +180,10 @@ then
 
         if [[ $CREATE_FILE == "y" ]];
         then
-            echo 'declare -a SDM_RESOURCES=(' >> ~/.sdmresources
-            echo '"Easy to read name 1" "id-1-from-strongdm"' >> ~/.sdmresources
-            echo '"Easy to read name 2" "id-2-from-strongdm"' >> ~/.sdmresources
-            echo ')' >> ~/.sdmresources
+            echo 'declare -a SDM_RESOURCES=(' >> ~/.sdmr-cli-config
+            echo '"Easy to read name 1" "id-1-from-strongdm"' >> ~/.sdmr-cli-config
+            echo '"Easy to read name 2" "id-2-from-strongdm"' >> ~/.sdmr-cli-config
+            echo ')' >> ~/.sdmr-cli-config
 
             ok "We have created the file, this process will now exit so you can edit the file."
             ok "exiting..."
@@ -155,7 +196,7 @@ then
         exit 0
     fi
 
-    source ~/.sdmresources
+    source ~/.sdmr-cli-config
 
     RESOURCE_CHOICE=$(dialog --clear \
             --title "Choose a resource to make a request" \
@@ -183,8 +224,124 @@ then
         exit 1
     fi
 
-    ok "Please enter a reason for this access."
-    read REASON
+    TICKET_CHOICE=$(dialog --clear \
+            --title "Jira ticket" \
+            --menu "Is this access for an existing ticket or a new one?" \
+            400 200 2 \
+            "Existing ticket" "Use a ticket you already have" \
+            "New ticket" "Create a new Jira ticket" 2>&1 >/dev/tty)
+
+    clear
+
+    if [[ $TICKET_CHOICE == "" ]];
+    then
+        error "You cancelled or made an invalid selection"
+        error "exiting..."
+        exit 1
+    fi
+
+    if [[ $TICKET_CHOICE == "New ticket" ]];
+    then
+        if [[ $JIRA_API_USERNAME == "" || $JIRA_API_TOKEN == "" ]];
+        then
+            error "You need JIRA_API_USERNAME and JIRA_API_TOKEN set to create a ticket."
+            error "exiting..."
+            exit 1
+        fi
+
+        if [[ $JIRA_SITE == "" ]];
+        then
+            error "You need SDM_JIRA_SITE set to your Jira site, e.g. your-org.atlassian.net."
+            error "exiting..."
+            exit 1
+        fi
+
+        if [[ ${#SDM_JIRA_PROJECTS[@]} -gt 0 ]];
+        then
+            PROJECT_MENU=("${SDM_JIRA_PROJECTS[@]}")
+        else
+            PROJECT_MENU=()
+            while IFS=$'\t' read -r PROJECT_NAME PROJECT_KEY
+            do
+                PROJECT_MENU+=("${PROJECT_NAME}" "${PROJECT_KEY}")
+            done < <(jiraProjects)
+        fi
+
+        if [[ ${#PROJECT_MENU[@]} -eq 0 ]];
+        then
+            error "There are no Jira projects to choose from."
+            error "Check ~/.sdmr-cli-config, or your JIRA_API_USERNAME, JIRA_API_TOKEN and SDM_JIRA_SITE."
+            error "exiting..."
+            exit 1
+        fi
+
+        PROJECT_CHOICE=$(dialog --clear \
+                --title "Choose a Jira project" \
+                --menu "Choose the project for the new ticket:" \
+                400 200 4 \
+                "${PROJECT_MENU[@]}" 2>&1 >/dev/tty)
+
+        clear
+
+        if [[ $PROJECT_CHOICE == "" ]];
+        then
+            error "You cancelled or made an invalid selection"
+            error "exiting..."
+            exit 1
+        fi
+
+        PROJECT_KEY=""
+        for PROJECT_INDEX in "${!PROJECT_MENU[@]}"
+        do
+            if [[ ${PROJECT_MENU[$PROJECT_INDEX]} == "${PROJECT_CHOICE}" ]];
+            then
+                PROJECT_KEY="${PROJECT_MENU[$PROJECT_INDEX+1]}"
+                break
+            fi
+        done
+
+        TEAM_ID=""
+
+        if [[ ${#SDM_JIRA_TEAMS[@]} -gt 0 && $(jiraSupportsTeam "${PROJECT_KEY}") == "true" ]];
+        then
+            TEAM_CHOICE=$(dialog --clear \
+                    --title "Choose a team" \
+                    --menu "Choose the team for the new ticket:" \
+                    400 200 4 \
+                    "${SDM_JIRA_TEAMS[@]}" 2>&1 >/dev/tty)
+
+            clear
+
+            if [[ $TEAM_CHOICE == "" ]];
+            then
+                error "You cancelled or made an invalid selection"
+                error "exiting..."
+                exit 1
+            fi
+
+            for TEAM_INDEX in "${!SDM_JIRA_TEAMS[@]}"
+            do
+                if [[ ${SDM_JIRA_TEAMS[$TEAM_INDEX]} == "${TEAM_CHOICE}" ]];
+                then
+                    TEAM_ID="${SDM_JIRA_TEAMS[$TEAM_INDEX+1]}"
+                    break
+                fi
+            done
+        fi
+
+        ok "Please enter a reason for this access."
+        read -r TICKET_DESCRIPTION
+
+        if [[ $TICKET_DESCRIPTION == "" ]];
+        then
+            error "A reason is required."
+            error "exiting..."
+            exit 1
+        fi
+    else
+        ok "Please enter a reason for this access."
+        read REASON
+    fi
 
     declare -a TIMES=(
         "15 Minutes" "15m"
@@ -211,6 +368,38 @@ then
     done
 
     clear
+
+    if [[ $TIME_CHOICE_ID == "" ]];
+    then
+        error "You cancelled or made an invalid selection"
+        error "exiting..."
+        exit 1
+    fi
+
+    if [[ $TICKET_CHOICE == "New ticket" ]];
+    then
+        ASSIGNEE_ID=$(jiraAccountId)
+
+        if [[ $ASSIGNEE_ID == "" ]];
+        then
+            error "We could not find a Jira account for ${JIRA_API_USERNAME}."
+            error "exiting..."
+            exit 1
+        fi
+
+        NEW_TICKET=$(createJiraTicket "${PROJECT_KEY}" "${SDM_EMAIL} needs access to ${RESOURCE_CHOICE} for ${TIME_CHOICE}" "${TICKET_DESCRIPTION}" "${TEAM_ID}" "${ASSIGNEE_ID}")
+
+        if [[ $NEW_TICKET == "" ]];
+        then
+            error "We could not create the Jira ticket."
+            error "exiting..."
+            exit 1
+        fi
+
+        ok "Created ${NEW_TICKET}: https://${JIRA_SITE}/browse/${NEW_TICKET}"
+        open "https://${JIRA_SITE}/browse/${NEW_TICKET}"
+        REASON="${NEW_TICKET} ${TICKET_DESCRIPTION}"
+    fi
 
     if [[ $RESOURCE_CHOICE_ID != "" ]];
     then
