@@ -1,5 +1,5 @@
 # sdmr-cli
-`smdr-cli` is a small API-free sidecar script to supplement sdm cli
+`sdmr-cli` is a small API-free sidecar script to supplement sdm cli
 functionality and automate requests, connections and client opening for
 database type resources.
 
@@ -9,7 +9,7 @@ database type resources.
 > environments.
 
 1. [Features](#features)
-2. [Why would you use this?](#why-would-you-use-this)
+2. [Who would you use this?](#who-would-you-use-this)
 3. [Usage](#usage)
    1. [Making a request, connecting and opening your client](#1-making-a-request-connecting-and-opening-your-client)
    2. [Connecting to an already approved request and opening your client](#2-connecting-to-an-already-approved-request-and-opening-your-client)
@@ -62,7 +62,7 @@ automatic or the approvers are slow it will display a message tell you to run
 again with `sdmr-cli connect`.
 
 ```bash
-smdr-cli request
+sdmr-cli request
 ```
 
 ### Connecting to an already approved request and opening your client
@@ -72,6 +72,10 @@ client automatically.
 ```bash
 sdmr-cli connect
 ```
+
+The client opened is chosen by the `SDM_CLIENT_SCHEME` environment variable, which
+defaults to `mysql`. For example, set `SDM_CLIENT_SCHEME=postgresql` to open
+`postgresql://` links instead.
 
 ## Installation
 The script itself will do most of this setup for you. These steps are being

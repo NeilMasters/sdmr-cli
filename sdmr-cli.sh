@@ -12,30 +12,27 @@ function ok() {
 
 function launchClient() {
     ok "Launching your client to open ${1}"
-    open "mysql://${1}"
+    open "${SDM_CLIENT_SCHEME:-mysql}://${1}"
 }
 
 function disconnect() {
     # disconnect() will disconnect you for any active connections and shutdown
     # any active listening port forwards.
-    ACTIVE_LISTENS=$(ps -A | grep "[s]dm listen" | awk '{print $1}')
+    ACTIVE_LISTENS=($(ps -A | grep "[s]dm listen" | awk '{print $1}'))
 
-    if [[ $ACTIVE_LISTEN != "" ]];
-    then
-        for ACTIVE_LISTEN in "${ACTIVE_LISTENS[@]}"
-        do
-            ok "Shutting down active listen pid ${ACTIVE_LISTEN}"
-            kill -9 "${ACTIVE_LISTEN}"
-        done
-    fi
+    for ACTIVE_LISTEN in "${ACTIVE_LISTENS[@]}"
+    do
+        ok "Shutting down active listen pid ${ACTIVE_LISTEN}"
+        kill -9 "${ACTIVE_LISTEN}"
+    done
 
     sdm disconnect -all >> /dev/null 2>&1
 }
 
 function connect() {
     CONNECTION="${1}"
-    sdm listen "${CONNECTION}" 2>&1 >/dev/null &
-    sdm connect "${CONNECTION}" 2>&1 >/dev/null
+    sdm listen "${CONNECTION}" >/dev/null 2>&1 &
+    sdm connect "${CONNECTION}" >/dev/null 2>&1
 
     sleep 1
 }
@@ -245,7 +242,7 @@ then
         ok "Your request was not auto approved."
         ok
         ok "Your access request has been sent, you will receive a notification"
-        ok "soon when it is approved. Re-running 'sdmc connect' command will show"
+        ok "soon when it is approved. Re-running 'sdmr-cli connect' command will show"
         ok "that connection once it has been approved."
     fi
 fi
